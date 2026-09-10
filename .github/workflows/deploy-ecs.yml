@@ -1,0 +1,97 @@
+name: Build and Deploy ECS
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+
+      # ------------------------------------------
+      # Checkout repository
+      # ------------------------------------------
+
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # ------------------------------------------
+      # Configure AWS
+      # ------------------------------------------
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ap-south-1
+
+      # ------------------------------------------
+      # Login to ECR
+      # ------------------------------------------
+
+      - name: Login to ECR
+        run: |
+          aws ecr get-login-password --region ap-south-1 | \
+          docker login \
+          --username AWS \
+          --password-stdin \
+          490617140445.dkr.ecr.ap-south-1.amazonaws.com
+
+      # ------------------------------------------
+      # Build Docker image
+      # ------------------------------------------
+
+      - name: Build Docker image
+        run: |
+          docker build \
+            -t 490617140445.dkr.ecr.ap-south-1.amazonaws.com/test:${{ github.sha }} .
+
+      # ------------------------------------------
+      # Push Docker image
+      # ------------------------------------------
+
+      - name: Push Docker image
+        run: |
+          docker push \
+            490617140445.dkr.ecr.ap-south-1.amazonaws.com/test:${{ github.sha }}
+
+      # ------------------------------------------
+      # Setup Terraform
+      # ------------------------------------------
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+
+      # ------------------------------------------
+      # Terraform Init
+      # ------------------------------------------
+
+      - name: Terraform Init
+        working-directory: terraform
+        run: |
+          terraform init
+
+      # ------------------------------------------
+      # Terraform Plan
+      # ------------------------------------------
+
+      - name: Terraform Plan
+        working-directory: terraform
+        run: |
+          terraform plan \
+            -var="image_uri=490617140445.dkr.ecr.ap-south-1.amazonaws.com/test:${{ github.sha }}"
+
+      # ------------------------------------------
+      # Terraform Apply
+      # ------------------------------------------
+
+      - name: Terraform Apply
+        working-directory: terraform
+        run: |
+          terraform apply \
+            -auto-approve \
+            -var="image_uri=490617140445.dkr.ecr.ap-south-1.amazonaws.com/test:${{ github.sha }}"
